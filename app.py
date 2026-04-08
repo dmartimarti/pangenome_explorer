@@ -40,7 +40,7 @@ from analysis import compute_umap_embedding, add_umap_coordinates, analyze_umap_
 from visualization import (create_umap_scatter_plot, create_summary_statistics_plot, 
                           create_enhanced_summary_plots, save_plots_to_files,
                           display_data_table, create_validation_plot)
-from config import MAX_SEQUENCE_LENGTH, BATCH_SIZE, DEFAULT_COLOR_BY, PROT_T5_MODEL_NAME
+from config import MAX_SEQUENCE_LENGTH, BATCH_SIZE, DEFAULT_COLOR_BY, PROT_T5_MODEL_NAME, UMAP_PCA_COMPONENTS
 
 
 def main():
@@ -204,7 +204,23 @@ def create_sidebar():
             format="%.2f",
             help="Controls how tightly points cluster in UMAP"
         )
-        
+
+        pca_components = st.select_slider(
+            "PCA pre-reduction dimensions",
+            options=[0, 30, 50, 100, 150, 200],
+            value=UMAP_PCA_COMPONENTS,
+            help="Reduce embedding dimensions with PCA before UMAP. 0 = disabled. "
+                 "Recommended: 50. Greatly reduces memory and speeds up computation "
+                 "with minimal quality loss for ProtT5 1024-dim embeddings.",
+        )
+
+        low_memory = st.checkbox(
+            "UMAP low-memory mode",
+            value=False,
+            help="Slower but uses significantly less RAM. Recommended for systems "
+                 "with less than 32 GB or datasets with more than 50 000 proteins.",
+        )
+
         # Process data button
         st.subheader("🚀 Processing")
         
@@ -222,7 +238,7 @@ def create_sidebar():
         # UMAP computation button
         if st.session_state.embeddings_generated and not st.session_state.umap_computed:
             if st.button("Compute UMAP", type="primary"):
-                compute_umap_visualization(n_neighbors, min_dist)
+                compute_umap_visualization(n_neighbors, min_dist, pca_components, low_memory)
 
         if st.session_state.data_loaded:
             st.subheader("💾 Checkpoints")
@@ -547,23 +563,30 @@ def restore_from_checkpoint(checkpoint_file) -> None:
         st.error(f"❌ Could not restore checkpoint: {e}")
 
 
-def compute_umap_visualization(n_neighbors: int, min_dist: float):
+def compute_umap_visualization(n_neighbors: int, min_dist: float,
+                               pca_components: int = UMAP_PCA_COMPONENTS,
+                               low_memory: bool = False):
     """Compute UMAP dimensionality reduction."""
-    
+
     try:
         progress = st.progress(0, text="Starting UMAP computation...")
 
         with st.spinner("Computing UMAP dimensionality reduction..."):
-            # Extract embeddings
+            # Extract embeddings as float32 to avoid an implicit copy inside UMAP.
             progress.progress(20, text="Extracting embedding matrix...")
-            embeddings = np.vstack(st.session_state.master_df['Embeddings'].values)
-            
-            # Compute UMAP
-            progress.progress(55, text="Running UMAP dimensionality reduction...")
+            embeddings = np.vstack(
+                st.session_state.master_df['Embeddings'].values
+            ).astype(np.float32)
+
+            # Compute UMAP (PCA pre-reduction and n_jobs handled inside)
+            pca_msg = f" → PCA {pca_components}d" if pca_components else ""
+            progress.progress(55, text=f"Running UMAP{pca_msg}...")
             umap_coords, umap_model = compute_umap_embedding(
-                embeddings, 
+                embeddings,
                 n_neighbors=n_neighbors,
-                min_dist=min_dist
+                min_dist=min_dist,
+                pca_components=pca_components,
+                low_memory=low_memory,
             )
             
             # Add coordinates to dataframe

@@ -1,64 +1,119 @@
 """UMAP dimensionality reduction and analysis utilities."""
 
+import gc
+import os
+
 import numpy as np
 import pandas as pd
 import streamlit as st
 import umap
 from sklearn.preprocessing import StandardScaler
-from typing import Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any
 import logging
 
-from config import UMAP_PARAMS
+from config import UMAP_PARAMS, UMAP_PCA_COMPONENTS
 
 logger = logging.getLogger(__name__)
 
 
+def _pca_reduce(embeddings: np.ndarray, n_components: int) -> np.ndarray:
+    """Reduce embedding dimensionality with randomised-SVD PCA before UMAP."""
+    from sklearn.decomposition import PCA
+
+    n_components = min(n_components, embeddings.shape[0], embeddings.shape[1])
+    logger.info(
+        "PCA pre-reduction: %d → %d dimensions (%d samples)",
+        embeddings.shape[1], n_components, embeddings.shape[0],
+    )
+    pca = PCA(n_components=n_components, svd_solver="randomized", random_state=42)
+    reduced = pca.fit_transform(embeddings)
+    explained = pca.explained_variance_ratio_.sum()
+    logger.info("PCA explained variance: %.1f%%", explained * 100)
+    return reduced.astype(np.float32)
+
+
 @st.cache_data
-def compute_umap_embedding(embeddings: np.ndarray, 
-                          n_neighbors: int = None,
-                          min_dist: float = None,
-                          metric: str = None,
-                          random_state: int = None) -> Tuple[np.ndarray, umap.UMAP]:
+def compute_umap_embedding(
+    embeddings: np.ndarray,
+    n_neighbors: Optional[int] = None,
+    min_dist: Optional[float] = None,
+    metric: Optional[str] = None,
+    random_state: Optional[int] = None,
+    n_jobs: Optional[int] = None,
+    low_memory: Optional[bool] = None,
+    pca_components: int = UMAP_PCA_COMPONENTS,
+) -> Tuple[np.ndarray, umap.UMAP]:
     """
     Compute UMAP dimensionality reduction on protein embeddings.
-    
+
     Args:
-        embeddings: High-dimensional embeddings array (n_samples, n_features)
-        n_neighbors: Number of neighbors for UMAP (None uses config default)
-        min_dist: Minimum distance for UMAP (None uses config default)
-        metric: Distance metric (None uses config default)
-        random_state: Random state for reproducibility (None uses config default)
-    
+        embeddings: High-dimensional embeddings (n_samples, n_features)
+        n_neighbors: UMAP neighbours (None → config default)
+        min_dist: UMAP minimum distance (None → config default)
+        metric: Distance metric (None → config default)
+        random_state: RNG seed (None → config default)
+        n_jobs: Parallel CPU workers; -1 uses all cores (None → config default)
+        low_memory: Enable memory-efficient UMAP tree (None → config default)
+        pca_components: Pre-reduce to this many PCA dims before UMAP (0 = skip)
+
     Returns:
-        Tuple of (2D_embeddings, fitted_umap_model)
+        Tuple of (2D embedding array, fitted UMAP model)
     """
     try:
-        # Use config defaults if not specified
+        # Build kwargs from config defaults, then override with any explicit args.
         umap_kwargs = UMAP_PARAMS.copy()
         if n_neighbors is not None:
-            umap_kwargs['n_neighbors'] = n_neighbors
+            umap_kwargs["n_neighbors"] = n_neighbors
         if min_dist is not None:
-            umap_kwargs['min_dist'] = min_dist
+            umap_kwargs["min_dist"] = min_dist
         if metric is not None:
-            umap_kwargs['metric'] = metric
+            umap_kwargs["metric"] = metric
         if random_state is not None:
-            umap_kwargs['random_state'] = random_state
-        
-        logger.info(f"Computing UMAP with parameters: {umap_kwargs}")
-        logger.info(f"Input embeddings shape: {embeddings.shape}")
-        
-        # Initialize UMAP
+            umap_kwargs["random_state"] = random_state
+        if n_jobs is not None:
+            umap_kwargs["n_jobs"] = n_jobs
+        if low_memory is not None:
+            umap_kwargs["low_memory"] = low_memory
+
+        # UMAP requires float32; cast here once so the caller doesn't need to.
+        if embeddings.dtype != np.float32:
+            embeddings = embeddings.astype(np.float32)
+
+        # Optional PCA pre-reduction — dramatically reduces memory and time for
+        # large 1024-dim embedding matrices with minimal quality loss.
+        if pca_components and pca_components < embeddings.shape[1]:
+            embeddings = _pca_reduce(embeddings, pca_components)
+            gc.collect()
+
+        # cosine metric is not compatible with low_memory=True in some UMAP builds;
+        # fall back to euclidean (on PCA-reduced data the manifold is preserved).
+        if umap_kwargs.get("low_memory") and umap_kwargs.get("metric") == "cosine":
+            logger.warning(
+                "Switching UMAP metric from 'cosine' to 'euclidean' because "
+                "low_memory=True is incompatible with 'cosine' in this UMAP build."
+            )
+            umap_kwargs["metric"] = "euclidean"
+
+        cpu_count = os.cpu_count() or 1
+        effective_jobs = umap_kwargs.get("n_jobs", 1)
+        logger.info(
+            "Computing UMAP: %d samples × %d dims | n_jobs=%s (machine has %d cores) | "
+            "n_neighbors=%d | metric=%s | low_memory=%s",
+            embeddings.shape[0], embeddings.shape[1],
+            effective_jobs, cpu_count,
+            umap_kwargs.get("n_neighbors", "?"),
+            umap_kwargs.get("metric", "?"),
+            umap_kwargs.get("low_memory", False),
+        )
+
         umap_model = umap.UMAP(**umap_kwargs)
-        
-        # Fit and transform
         embedding_2d = umap_model.fit_transform(embeddings)
-        
-        logger.info(f"UMAP completed. Output shape: {embedding_2d.shape}")
-        
+
+        logger.info("UMAP completed. Output shape: %s", embedding_2d.shape)
         return embedding_2d, umap_model
-        
+
     except Exception as e:
-        logger.error(f"Error computing UMAP: {e}")
+        logger.error("Error computing UMAP: %s", e)
         raise
 
 

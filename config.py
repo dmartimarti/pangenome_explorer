@@ -18,8 +18,15 @@ UMAP_PARAMS = {
     "min_dist": 0.1,
     "n_components": 2,
     "metric": "cosine",
-    "random_state": 42
+    "random_state": 42,
+    "n_jobs": -1,          # use all available CPU cores for neighbour search + layout
+    "low_memory": False,   # set True on machines with <32 GB RAM
 }
+
+# Optional PCA pre-reduction before UMAP (0 = disabled).
+# Reducing 1024-dim embeddings to 50-100 dims first dramatically cuts UMAP
+# memory and time with negligible quality loss on ProtT5 embeddings.
+UMAP_PCA_COMPONENTS = 50
 
 # Data Processing
 PROTEIN_TRANSLATION_TABLE = 1  # Standard genetic code

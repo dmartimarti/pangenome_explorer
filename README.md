@@ -180,6 +180,18 @@ Key parameters can be adjusted in `config.py`:
 - `UMAP_PARAMS`: UMAP visualization parameters
 - `DEVICE`: Runtime backend preference (`auto`, `cuda`, `mps`, `cpu`)
 
+## Changelog
+
+### v0.4.0
+
+- Added automatic runtime accelerator detection with seamless CUDA, MPS, and CPU fallback.
+- Added backend status reporting in the app so users can see whether GPU acceleration is active.
+- Added resumable Phase 1 and Phase 2 checkpoints using ZIP bundles with manifest, table, JSON, and NPZ assets.
+- Improved Phase 1 and Phase 2 scalability by filtering FASTA matching, parallelizing translation, avoiding redundant embeddings for identical proteins, and reducing embedding-memory overhead.
+- Improved UMAP performance and memory efficiency with multi-core execution, optional PCA pre-reduction, and a low-memory mode.
+- Expanded downstream exploration with a searchable protein browser, detail panel, sequence export tools, and external links for BLASTP and InterPro.
+- Added stronger validation and logging to make long runs easier to diagnose and resume.
+
 ## TODO List
 
 ### High Priority
