@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from transformers import T5Tokenizer, T5EncoderModel
-from typing import List, Tuple, Callable, Optional
+from typing import List, Tuple, Callable, Optional, Dict
 import logging
 import gc
 from pathlib import Path
@@ -14,6 +14,74 @@ from config import (PROT_T5_MODEL_NAME, DEVICE, MODEL_PRECISION, BATCH_SIZE,
                    MAX_TOKENIZER_LENGTH, ENABLE_MEMORY_CLEANUP)
 
 logger = logging.getLogger(__name__)
+
+
+def get_runtime_backend_info(preferred_device: str = DEVICE) -> Dict[str, str]:
+    """Detect available accelerators and choose runtime compute backend."""
+    cuda_available = torch.cuda.is_available()
+    mps_available = bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
+
+    normalized_preference = (preferred_device or "auto").strip().lower()
+    warning = ""
+
+    if normalized_preference == "cuda":
+        if cuda_available:
+            selected_device = "cuda"
+        else:
+            selected_device = "cpu"
+            warning = "CUDA requested but unavailable; falling back to CPU."
+    elif normalized_preference == "mps":
+        if mps_available:
+            selected_device = "mps"
+        else:
+            selected_device = "cpu"
+            warning = "MPS requested but unavailable; falling back to CPU."
+    elif normalized_preference == "cpu":
+        selected_device = "cpu"
+    else:
+        if cuda_available:
+            selected_device = "cuda"
+        elif mps_available:
+            selected_device = "mps"
+        else:
+            selected_device = "cpu"
+            warning = "No GPU backend detected (CUDA/MPS unavailable); running on CPU."
+
+    gpu_name = ""
+    if selected_device == "cuda":
+        try:
+            gpu_name = torch.cuda.get_device_name(0)
+        except Exception:
+            gpu_name = "CUDA GPU"
+    elif selected_device == "mps":
+        gpu_name = "Apple Silicon GPU"
+
+    return {
+        "preferred_device": normalized_preference,
+        "selected_device": selected_device,
+        "cuda_available": str(cuda_available),
+        "mps_available": str(mps_available),
+        "gpu_name": gpu_name,
+        "warning": warning,
+    }
+
+
+def _resolve_model_precision(device: str, configured_precision: str = MODEL_PRECISION) -> str:
+    """Choose safe precision for the selected backend."""
+    normalized = (configured_precision or "float16").strip().lower()
+
+    if device == "cpu":
+        return "float32"
+
+    if normalized == "bfloat16":
+        if device.startswith("cuda"):
+            return "bfloat16"
+        return "float16"
+
+    if normalized == "float16":
+        return "float16"
+
+    return "float32"
 
 
 def check_model_availability(model_name: str = PROT_T5_MODEL_NAME) -> Tuple[bool, str]:
@@ -92,14 +160,16 @@ def load_prot_t5_model(force_download: bool = False) -> Tuple[T5Tokenizer, T5Enc
                     f"Run download flow first. Details: {model_info}"
                 )
         
-        # Check device availability
-        if DEVICE == "mps" and not torch.backends.mps.is_available():
-            device = "cpu"
-            logger.warning("MPS not available, falling back to CPU")
+        backend_info = get_runtime_backend_info()
+        device = backend_info["selected_device"]
+        if backend_info["warning"]:
+            logger.warning(backend_info["warning"])
+        if device == "cuda":
+            logger.info("Using CUDA acceleration: %s", backend_info["gpu_name"])
+        elif device == "mps":
+            logger.info("Using Apple Silicon MPS acceleration")
         else:
-            device = DEVICE
-            if device == "mps":
-                logger.info("Using Apple Silicon MPS acceleration")
+            logger.warning("Using CPU backend; embedding performance will be slower")
         
         # Load tokenizer
         tokenizer = T5Tokenizer.from_pretrained(
@@ -115,13 +185,16 @@ def load_prot_t5_model(force_download: bool = False) -> Tuple[T5Tokenizer, T5Enc
             local_files_only=not force_download
         )
         
-        # Convert to specified precision for memory efficiency
-        if MODEL_PRECISION == "float16":
+        # Convert to backend-safe precision for memory efficiency.
+        resolved_precision = _resolve_model_precision(device, MODEL_PRECISION)
+        if resolved_precision == "float16":
             model = model.half()
             logger.info("Model converted to float16 precision")
-        elif MODEL_PRECISION == "bfloat16":
+        elif resolved_precision == "bfloat16":
             model = model.to(torch.bfloat16)
             logger.info("Model converted to bfloat16 precision")
+        else:
+            logger.info("Using float32 precision")
         
         # Move to device
         model = model.to(device)

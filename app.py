@@ -27,6 +27,7 @@ from embedding import (
     generate_protein_embeddings_chunked_with_progress,
     check_model_availability,
     estimate_model_download_size,
+    get_runtime_backend_info,
 )
 from checkpoint import (
     CheckpointError,
@@ -59,6 +60,9 @@ def main():
     
     # Initialize session state
     initialize_session_state()
+
+    backend_info = get_runtime_backend_info()
+    render_backend_status(backend_info)
     
     # Create layout
     create_sidebar()
@@ -105,6 +109,23 @@ def initialize_session_state():
 
     if 'phase2_checkpoint_bytes' not in st.session_state:
         st.session_state.phase2_checkpoint_bytes = None
+
+
+def render_backend_status(backend_info: Dict[str, str]) -> None:
+    """Display runtime accelerator status and warnings."""
+    selected_device = backend_info.get('selected_device', 'cpu')
+    gpu_name = backend_info.get('gpu_name', '')
+    warning = backend_info.get('warning', '')
+
+    if selected_device == 'cuda':
+        st.success(f"Runtime backend: CUDA ({gpu_name})")
+    elif selected_device == 'mps':
+        st.success("Runtime backend: MPS (Apple Silicon GPU)")
+    else:
+        st.warning("Runtime backend: CPU (CUDA and MPS not available)")
+
+    if warning:
+        st.warning(warning)
 
 
 def create_sidebar():

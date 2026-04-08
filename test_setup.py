@@ -40,25 +40,34 @@ def test_imports():
     return failed_imports
 
 
-def test_torch_mps():
-    """Test PyTorch MPS backend availability."""
+def test_torch_acceleration():
+    """Test PyTorch CUDA/MPS backend availability."""
     
     try:
         import torch
         
         print(f"\nPyTorch version: {torch.__version__}")
         
-        if torch.backends.mps.is_available():
+        cuda_available = torch.cuda.is_available()
+        mps_available = bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
+
+        if cuda_available:
+            gpu_name = torch.cuda.get_device_name(0)
+            print("✅ CUDA backend is available")
+            print(f"✅ NVIDIA GPU detected: {gpu_name}")
+            return "cuda"
+
+        if mps_available:
             print("✅ MPS backend is available")
             print("✅ Apple Silicon GPU acceleration ready")
-            return True
-        else:
-            print("⚠️  MPS backend not available - will fall back to CPU")
-            return False
+            return "mps"
+
+        print("⚠️  CUDA and MPS backends are unavailable - will fall back to CPU")
+        return "cpu"
             
     except Exception as e:
-        print(f"❌ Error testing MPS: {e}")
-        return False
+        print(f"❌ Error testing acceleration backends: {e}")
+        return "cpu"
 
 
 def test_model_access():
@@ -122,8 +131,8 @@ def main():
     # Test imports
     failed_imports = test_imports()
     
-    # Test PyTorch MPS
-    mps_available = test_torch_mps()
+    # Test PyTorch acceleration
+    acceleration_backend = test_torch_acceleration()
     
     # Test model access (optional - may require internet)
     try:
@@ -143,7 +152,9 @@ def main():
     if not failed_imports and not missing_files:
         print("✅ All core components are ready!")
         
-        if mps_available:
+        if acceleration_backend == "cuda":
+            print("🚀 CUDA acceleration enabled")
+        elif acceleration_backend == "mps":
             print("🚀 Apple Silicon acceleration enabled")
         else:
             print("⚠️  Will use CPU (slower but functional)")

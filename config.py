@@ -2,7 +2,9 @@
 
 # Model Configuration
 PROT_T5_MODEL_NAME = "Rostlab/prot_t5_xl_uniref50"
-DEVICE = "mps"  # Apple Silicon GPU
+# Runtime backend preference: "auto" chooses CUDA > MPS > CPU.
+# You can override with "cuda", "mps", or "cpu".
+DEVICE = "auto"
 MODEL_PRECISION = "float16"
 
 # Processing Parameters

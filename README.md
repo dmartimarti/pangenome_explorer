@@ -11,7 +11,7 @@ A Streamlit web application for analyzing bacterial pangenomes using Large Prote
 
 - **Phase 2: Protein Embeddings**
   - ProtT5-XL-U50 model integration
-  - Apple Silicon MPS optimization
+  - Automatic accelerator detection (CUDA, MPS, CPU fallback)
   - Batch processing for memory efficiency
 
 - **Phase 3: Visualization**
@@ -67,7 +67,7 @@ pip install sentencepiece
 streamlit run app.py
 ```
 
-**Note**: The conda environment ensures better dependency management and Apple Silicon compatibility. Always activate the environment before running the application:
+**Note**: The conda environment ensures better dependency management and cross-platform compatibility (macOS and Windows + WSL2). Always activate the environment before running the application:
 ```bash
 conda activate pangenome
 ```
@@ -145,7 +145,8 @@ For long runs, repeat the same process after embeddings:
 
 - Python 3.8+
 - 64GB RAM recommended for large datasets
-- Apple Silicon Mac (for MPS optimization) or CUDA GPU
+- Apple Silicon Mac, Linux, or Windows with WSL2
+- Optional GPU acceleration via CUDA (NVIDIA) or MPS (Apple Silicon)
 - ~10GB free disk space for model downloads
 
 ## File Structure
@@ -172,6 +173,7 @@ Key parameters can be adjusted in `config.py`:
 - `BATCH_SIZE`: Number of sequences per embedding batch (default: 32)
 - `MAX_SEQUENCE_LENGTH`: Maximum protein length in amino acids (default: 1000)
 - `UMAP_PARAMS`: UMAP visualization parameters
+- `DEVICE`: Runtime backend preference (`auto`, `cuda`, `mps`, `cpu`)
 
 ## TODO List
 
@@ -246,7 +248,7 @@ Key parameters can be adjusted in `config.py`:
 ## Troubleshooting
 
 **Memory Issues**: Reduce `BATCH_SIZE` in config.py or use smaller datasets
-**Model Loading Errors**: Ensure PyTorch MPS backend is available on Apple Silicon
+**Model Loading Errors**: Verify that PyTorch can detect CUDA on WSL2/NVIDIA or MPS on Apple Silicon; the app will automatically fall back to CPU with a warning
 **Translation Errors**: Check FASTA file format and ensure nucleotide sequences
 **Environment Issues**: Make sure the conda environment is activated (`conda activate pangenome`)
 **Package Conflicts**: If using mixed conda/pip installation, try installing everything via pip in the conda environment
