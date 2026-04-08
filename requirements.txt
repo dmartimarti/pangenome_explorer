@@ -1,0 +1,10 @@
+streamlit>=1.28.0
+transformers>=4.34.0
+torch>=2.0.0
+biopython>=1.81
+umap-learn>=0.5.3
+plotly>=5.17.0
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+kaleido-core>=0.2.1

@@ -1,0 +1,2 @@
+# This directory is used for Streamlit caching
+# The .gitkeep file ensures the directory is tracked by Git even when empty
