@@ -159,11 +159,16 @@ pangenome_explorer/
 ├── environment.yml       # Conda environment specification
 ├── src/                  # Source modules
 │   ├── data_loading.py   # Panaroo/FASTA parsing
+│   ├── checkpoint.py     # Checkpoint system for pipeline resumption
 │   ├── embedding.py      # ProtT5 model integration
 │   ├── analysis.py       # UMAP and clustering
 │   └── visualization.py  # Plotly visualizations
 ├── cache/                # Streamlit cache directory
-└── data/                 # Sample data (optional)
+└── data/                 # Sample data
+    ├── gene_presence_absence.csv
+    ├── pan_genome_reference.fa
+    └── pangenome_phase1_checkpoint.zip
+
 ```
 
 ## Configuration
